@@ -1,10 +1,23 @@
 const mineflayer = require('mineflayer');
 const chalk = require('chalk');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
+const http = require('http');
 
-// --- 1. BỘ LỌC TRIỆT ĐỂ: XÓA LỖI CHUNK / TELEPORT / BUFFER RÁC ---
+// --- 0. GIỮ BOT LUÔN SỐNG TRÊN RENDER ---
+// Render yêu cầu một web server để xác nhận ứng dụng đang chạy.
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Lucifer Bot is Online\n');
+});
+
+// Render tự động cấp PORT, nếu không có thì dùng 10000
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+    console.log(chalk.green(`[HỆ THỐNG] Web Server chạy trên cổng ${PORT}`));
+});
+
+// --- 1. BỘ LỌC LOG (TRÁNH TRÀN NHẬT KÝ RENDER) ---
 const originalStdout = process.stdout.write;
-const originalStderr = process.stderr.write;
 const filterSystemLogs = (chunk) => {
     const msg = chunk.toString();
     const blacklist = ['Chunk size', 'partial packet', 'entity_teleport', 'buffer :', 'params', 'entityId'];
@@ -13,10 +26,6 @@ const filterSystemLogs = (chunk) => {
 process.stdout.write = function (chunk, encoding, callback) {
     if (filterSystemLogs(chunk)) return;
     return originalStdout.apply(process.stdout, arguments);
-};
-process.stderr.write = function (chunk, encoding, callback) {
-    if (filterSystemLogs(chunk)) return;
-    return originalStderr.apply(process.stderr, arguments);
 };
 
 // --- 2. CẤU HÌNH ---
@@ -38,7 +47,7 @@ const addLog = (tag, msg, col) => {
     const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
     if (msg.includes('§') || msg.length > 90 || msg.trim() === "") return;
     allLogs.push(`${chalk.gray(time)} ${chalk[col].bold(`[${tag}]`)} ${chalk.white(msg.trim())}`);
-    if (allLogs.length > 20) allLogs.shift();
+    if (allLogs.length > 15) allLogs.shift();
 };
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -53,65 +62,44 @@ const equipPickaxe = async (bot) => {
 function createBot() {
     const bot = mineflayer.createBot(config);
 
-    // --- 4. GIAO DIỆN DASHBOARD ---
-    const render = async () => {
-        process.stdout.write('\x1B[H\x1B[2J\x1B[3J');
+    // --- 4. GIAO DIỆN DASHBOARD (GỬI QUA DISCORD) ---
+    const renderStats = async () => {
         const diff = Date.now() - s.start;
         const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
         const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
         const sec = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
         const timeBot = `${h}:${m}:${sec}`;
 
-        s.players = Object.keys(bot.players).length;
+        s.players = bot.players ? Object.keys(bot.players).length : 0;
         s.foodLevel = bot.food || 0;
-
-        console.log(chalk.bgCyan.black.bold(`  BẢNG ĐIỀU KHIỂN LUCIFER  `) + chalk.bgWhite.black.bold(` PHIÊN BẢN 30.0 `));
-        console.log("");
-
-        // Hiển thị trạng thái thông minh
-        let statusStr;
-        if (s.isTeleporting) {
-            statusStr = chalk.bgYellow.black.bold(' ✈️  ĐANG DỊCH CHUYỂN (15S) ');
-        } else if (s.mining) {
-            statusStr = chalk.bgGreen.black.bold(' ⛏  ĐANG HOẠT ĐỘNG ');
-        } else {
-            statusStr = chalk.bgRed.white.bold(' 🛑 ĐANG TẠM DỪNG ');
-        }
-
-        const foodDisplay = s.foodLevel <= 12 ? chalk.red.bold(`${s.foodLevel}/20`) : chalk.white(`${s.foodLevel}/20`);
-
-        console.log(`${chalk.cyan('  👤 TÀI KHOẢN :')} ${chalk.white(config.username.padEnd(15))} ${chalk.cyan('👥 TRỰC TUYẾN :')} ${chalk.white(s.players)}`);
-        console.log(`${chalk.cyan('  ⛏  SỐ BLOCK  :')} ${chalk.white(s.blocks.toLocaleString().padEnd(15))} ${chalk.cyan('📡 TRẠNG THÁI :')} ${statusStr}`);
-        console.log(`${chalk.cyan('  🍱 ĐỘ ĐÓI    :')} ${foodDisplay.padEnd(22)} ${chalk.cyan('   🔗 MÁY CHỦ    :')} ${chalk.white(config.host)}`);
-        console.log(`${chalk.cyan('  ⏱  THỜI GIAN :')} ${chalk.white(timeBot)}`);
-        console.log("");
-        console.log(chalk.cyan.bold(`  NHẬT KÝ HOẠT ĐỘNG HỆ THỐNG :`));
-        console.log(chalk.gray(`  ─────────────────────────────────────────────────────────────────────────`));
-        allLogs.forEach(l => console.log('   ' + l));
-        console.log(chalk.gray(`  ─────────────────────────────────────────────────────────────────────────`));
 
         try {
             const embed = new EmbedBuilder()
-                .setTitle('DASHBOARD')
+                .setTitle('LUCIFER BOT - RENDER CLOUD')
                 .setColor(s.mining ? 0x00FF00 : 0xFF0000)
                 .addFields(
                     { name: '👤 Tài khoản', value: `\`${config.username}\``, inline: true },
                     { name: '📡 Trạng thái', value: `**${s.isTeleporting ? "✈️ DỊCH CHUYỂN" : (s.mining ? "🟢 HOẠT ĐỘNG" : "🔴 TẠM DỪNG")}**`, inline: true },
                     { name: '⛏ Số Block', value: `\`${s.blocks.toLocaleString()}\``, inline: true },
-                    { name: '⏱ Thời gian', value: `\`${timeBot}\``, inline: true }
+                    { name: '⏱ Uptime', value: `\`${timeBot}\``, inline: true },
+                    { name: '🍱 Độ đói', value: `\`${s.foodLevel}/20\``, inline: true }
                 ).setTimestamp();
+
             if (!discordMsgId) {
                 const message = await webhook.send({ embeds: [embed] });
                 discordMsgId = message.id;
             } else {
                 await webhook.editMessage(discordMsgId, { embeds: [embed] });
             }
-        } catch (err) {}
+        } catch (err) {
+            console.log("Lỗi gửi Discord Webhook");
+        }
     };
 
-    setInterval(render, 1000); 
+    // Cập nhật Discord mỗi 30 giây để tránh bị giới hạn (Rate limit)
+    setInterval(renderStats, 30000); 
 
-    // --- 5. LOGIC KHỞI ĐỘNG (FIX CHỜ 15S) ---
+    // --- 5. LOGIC CHÍNH ---
     bot.on('spawn', async () => {
         if (s.login) return;
         addLog('HỆ THỐNG', 'Kết nối thành công.', 'cyan');
@@ -119,27 +107,22 @@ function createBot() {
         s.login = 1; await sleep(6000); bot.chat('/server skyblock');
         s.server = 1; await sleep(10000); 
 
-        // Bắt đầu dịch chuyển về home
-        addLog('HÀNH ĐỘNG', 'Đang thực hiện /home. Chờ 15 giây...', 'yellow');
+        addLog('HÀNH ĐỘNG', 'Thực hiện /home. Chờ 15s...', 'yellow');
         s.isTeleporting = true;
         bot.chat('/home');
         
-        // Chờ 17 giây (15s quy định + 2s dự phòng lag)
         await sleep(17000); 
-        
         s.isTeleporting = false;
-        s.home = 1;
-        s.mining = 1;
-        addLog('HỆ THỐNG', 'Đã về đảo. Bắt đầu đào!', 'green');
+        s.home = 1; s.mining = 1;
+        addLog('HỆ THỐNG', 'Bắt đầu đào!', 'green');
         startMining(bot);
     });
 
     bot.on('messagestr', (msg) => {
-        addLog(s.server ? 'SKYBLOCK' : 'SẢNH CHỜ', msg, s.server ? 'yellow' : 'blue');
+        if (msg.trim()) console.log(chalk.blue(`[CHAT] ${msg.trim()}`));
     });
 
     async function startMining(bot) {
-        // Chỉ đào khi đang bật mining và KHÔNG trong lúc dịch chuyển
         while (s.mining && !s.isTeleporting) {
             const block = bot.blockAtCursor(4);
             if (block && block.name !== 'air') {
@@ -150,26 +133,23 @@ function createBot() {
                 } catch {}
             } else {
                 bot.swingArm('left');
-                await sleep(200);
+                await sleep(250);
             }
         }
     }
 
-    // --- 6. AUTO EAT & CẦM LẠI CÚP ---
+    // Tự động ăn
     setInterval(async () => {
         if (!bot.entity || s.isTeleporting) return;
         if (bot.food <= 14) {
             const food = bot.inventory.items().find(i =>
-                ['beef', 'bread', 'apple', 'steak', 'pork', 'mutton', 'chicken', 'cooked', 'golden_apple', 'potato'].some(n => i.name.includes(n))
+                ['beef', 'bread', 'apple', 'steak', 'pork', 'mutton', 'chicken', 'cooked', 'potato'].some(n => i.name.includes(n))
             );
             if (food) {
-                const wasMining = s.mining; 
-                s.mining = 0; 
-                addLog('HÀNH ĐỘNG', `Đang ăn hồi phục...`, 'magenta');
+                const wasMining = s.mining; s.mining = 0; 
                 try {
                     await bot.equip(food, 'hand');
                     await bot.consume();
-                    addLog('HÀNH ĐỘNG', `Ăn xong! Đang quay lại đào...`, 'green');
                 } catch (e) {} finally {
                     await equipPickaxe(bot);
                     s.mining = wasMining;
@@ -177,12 +157,9 @@ function createBot() {
                 }
             }
         }
-    }, 15000);
+    }, 20000);
 
-    bot.on('resourcePack', () => bot.acceptResourcePack());
-    bot.on('error', (e) => {
-        if (!e.message.includes('Chunk size')) addLog('LỖI', e.message, 'red');
-    });
+    bot.on('error', (e) => console.log(chalk.red(`[LỖI] ${e.message}`)));
     bot.on('end', () => {
         s = { ...s, login: 0, server: 0, home: 0, mining: 0, isTeleporting: false };
         setTimeout(createBot, 15000);
