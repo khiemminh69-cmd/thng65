@@ -3,21 +3,17 @@ const chalk = require('chalk');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
 const http = require('http');
 
-// --- 0. GIỮ BOT LUÔN SỐNG TRÊN RENDER ---
-const server = http.createServer((req, res) => {
+// --- 0. WEB SERVER GIỮ SỐNG ---
+http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Lucifer Bot is Online\n');
-});
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(chalk.green(`[HỆ THỐNG] Web Server chạy trên cổng ${PORT}`));
-});
+    res.end('Lucifer Bot 24/7 Online\n');
+}).listen(process.env.PORT || 10000);
 
 // --- 1. BỘ LỌC LOG ---
 const originalStdout = process.stdout.write;
 const filterSystemLogs = (chunk) => {
     const msg = chunk.toString();
-    const blacklist = ['Chunk size', 'partial packet', 'entity_teleport', 'buffer :', 'params', 'entityId'];
+    const blacklist = ['Chunk size', 'partial packet', 'entity_teleport', 'buffer :', 'params', 'entityId', 'unhandled packet'];
     return blacklist.some(term => msg.includes(term));
 };
 process.stdout.write = function (chunk, encoding, callback) {
@@ -25,7 +21,7 @@ process.stdout.write = function (chunk, encoding, callback) {
     return originalStdout.apply(process.stdout, arguments);
 };
 
-// --- 2. CẤU HÌNH ---
+// --- 2. CẤU HÌNH (ĐÃ FIX VERSION) ---
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1487286375802998864/nQXjQ5QP09zfnFVzYvEzp-iRu-Tikxsc7SbqLv30kNSjIdmQ5P9z7igIBZ03UkGchZos';
 const webhook = new WebhookClient({ url: DISCORD_WEBHOOK_URL });
 let discordMsgId = null; 
@@ -35,88 +31,77 @@ const config = {
     port: 25565,
     username: 'thanhng65', 
     pass: '0866703869',
-    version: false, // Tự động dò phiên bản server
-    connectTimeout: 60000 // Tăng thời gian chờ lên 60s phòng lag
+    version: '1.20.1', // Ép về 1.20.1 để tránh lỗi Socket
+    connectTimeout: 60000,
+    keepAlive: true,
+    hideErrors: true
 };
 
 // --- 3. BIẾN TRẠNG THÁI ---
-let s = { login: 0, server: 0, home: 0, mining: 0, blocks: 0, foodLevel: 20, start: Date.now(), players: 0, isTeleporting: false };
-let allLogs = [];
+let s = { login: 0, server: 0, home: 0, mining: 0, blocks: 0, foodLevel: 20, start: Date.now(), isTeleporting: false };
 
 const addLog = (tag, msg, col) => {
     const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-    console.log(`${chalk[col](`[${tag}]`)} ${msg}`); // Hiện log ra Render để dễ check
-    if (msg.includes('§') || msg.length > 90 || msg.trim() === "") return;
-    allLogs.push(`${chalk.gray(time)} ${chalk[col].bold(`[${tag}]`)} ${chalk.white(msg.trim())}`);
-    if (allLogs.length > 15) allLogs.shift();
-};
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-const equipPickaxe = async (bot) => {
-    const pickaxe = bot.inventory.items().find(i => i.name.includes('pickaxe'));
-    if (pickaxe) {
-        try { await bot.equip(pickaxe, 'hand'); } catch (err) {}
-    }
+    console.log(chalk[col](`[${time}] [${tag}] ${msg}`));
 };
 
 function createBot() {
-    addLog('HỆ THỐNG', `Đang thử kết nối tới ${config.host}...`, 'yellow');
+    addLog('HỆ THỐNG', `Đang kết nối tới AquaMC (Ver: ${config.version})...`, 'yellow');
+    
     const bot = mineflayer.createBot(config);
 
-    // --- 4. DASHBOARD DISCORD ---
+    // --- 4. DISCORD DASHBOARD ---
     const renderStats = async () => {
+        if (!bot.players) return;
         const diff = Date.now() - s.start;
-        const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
-        const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
-        const sec = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
-        const timeBot = `${h}:${m}:${sec}`;
-        s.players = bot.players ? Object.keys(bot.players).length : 0;
-        s.foodLevel = bot.food || 0;
-
+        const timeBot = new Date(diff).toISOString().substr(11, 8);
+        
         try {
             const embed = new EmbedBuilder()
-                .setTitle('LUCIFER BOT - RENDER CLOUD')
-                .setColor(s.mining ? 0x00FF00 : 0xFF0000)
+                .setTitle('LUCIFER DASHBOARD - RENDER')
+                .setColor(s.mining ? 0x00FF00 : 0xFFAA00)
                 .addFields(
-                    { name: '👤 Tài khoản', value: `\`${config.username}\``, inline: true },
-                    { name: '📡 Trạng thái', value: `**${s.isTeleporting ? "✈️ DỊCH CHUYỂN" : (s.mining ? "🟢 HOẠT ĐỘNG" : "🔴 TẠM DỪNG")}**`, inline: true },
-                    { name: '⛏ Số Block', value: `\`${s.blocks.toLocaleString()}\``, inline: true },
-                    { name: '⏱ Uptime', value: `\`${timeBot}\``, inline: true }
+                    { name: '👤 Nick', value: `\`${config.username}\``, inline: true },
+                    { name: '📡 Trạng thái', value: `**${s.isTeleporting ? "✈️ DỊCH CHUYỂN" : (s.mining ? "🟢 ĐANG ĐÀO" : "🟠 CHỜ ĐĂNG NHẬP")}**`, inline: true },
+                    { name: '⛏ Khối đá', value: `\`${s.blocks.toLocaleString()}\``, inline: true },
+                    { name: '⏱ Thời gian', value: `\`${timeBot}\``, inline: true }
                 ).setTimestamp();
+            
             if (!discordMsgId) {
                 const message = await webhook.send({ embeds: [embed] });
                 discordMsgId = message.id;
             } else {
                 await webhook.editMessage(discordMsgId, { embeds: [embed] });
             }
-        } catch (err) {}
+        } catch (e) {}
     };
-    setInterval(renderStats, 30000); 
+    setInterval(renderStats, 30000);
 
-    // --- 5. LOGIC KẾT NỐI ---
-    bot.on('connect', () => addLog('HỆ THỐNG', 'Đã chạm được server AquaMC!', 'green'));
+    // --- 5. LOGIC GAME ---
+    bot.on('connect', () => addLog('HỆ THỐNG', 'Đã bắt tín hiệu server!', 'green'));
 
     bot.on('spawn', async () => {
         if (s.login) return;
-        addLog('HỆ THỐNG', 'Vào game thành công. Đang login...', 'cyan');
-        await sleep(6000); bot.chat(`/login ${config.pass}`);
-        s.login = 1; await sleep(6000); bot.chat('/server skyblock');
-        s.server = 1; await sleep(12000); 
+        addLog('GAME', 'Đã Spawn! Chờ 8 giây để Login...', 'cyan');
+        await new Promise(r => setTimeout(r, 8000));
+        bot.chat(`/login ${config.pass}`);
+        s.login = 1;
 
-        addLog('HÀNH ĐỘNG', 'Thực hiện /home. Chờ 17s...', 'yellow');
+        await new Promise(r => setTimeout(r, 8000));
+        addLog('GAME', 'Đang chuyển vùng Skyblock...', 'magenta');
+        bot.chat('/server skyblock');
+        s.server = 1;
+
+        await new Promise(r => setTimeout(r, 12000));
+        addLog('HÀNH ĐỘNG', 'Đang về /home (Chờ 18s)...', 'yellow');
         s.isTeleporting = true;
         bot.chat('/home');
         
-        await sleep(18000); 
+        await new Promise(r => setTimeout(r, 18000));
         s.isTeleporting = false;
         s.home = 1; s.mining = 1;
-        addLog('HỆ THỐNG', 'Bắt đầu đào đá!', 'green');
+        addLog('HỆ THỐNG', 'BẮT ĐẦU ĐÀO ĐÁ!', 'green');
         startMining(bot);
-    });
-
-    bot.on('messagestr', (msg) => {
-        if (msg.trim()) console.log(chalk.blue(`[CHAT] ${msg.trim()}`));
     });
 
     async function startMining(bot) {
@@ -130,37 +115,49 @@ function createBot() {
                 } catch {}
             } else {
                 bot.swingArm('left');
-                await sleep(250);
+                await new Promise(r => setTimeout(r, 300));
             }
         }
     }
 
-    // Tự động ăn
+    // Auto Eat
     setInterval(async () => {
         if (!bot.entity || s.isTeleporting) return;
         if (bot.food <= 14) {
-            const food = bot.inventory.items().find(i =>
-                ['beef', 'bread', 'apple', 'steak', 'pork', 'mutton', 'chicken', 'cooked', 'potato'].some(n => i.name.includes(n))
+            const food = bot.inventory.items().find(i => 
+                ['beef', 'bread', 'apple', 'steak', 'pork', 'cooked', 'potato'].some(n => i.name.includes(n))
             );
             if (food) {
-                const wasMining = s.mining; s.mining = 0; 
+                const wasMining = s.mining; s.mining = 0;
                 try {
                     await bot.equip(food, 'hand');
                     await bot.consume();
-                } catch (e) {} finally {
-                    await equipPickaxe(bot);
+                } catch {} finally {
                     s.mining = wasMining;
                     if (s.mining) startMining(bot);
                 }
             }
         }
-    }, 25000);
+    }, 20000);
 
-    bot.on('error', (e) => addLog('LỖI', e.message, 'red'));
+    bot.on('messagestr', (msg) => {
+        if (msg.includes('đăng nhập thành công') || msg.includes('chào mừng')) {
+            addLog('CHAT', 'Đã đăng nhập thành công!', 'green');
+        }
+    });
+
+    bot.on('error', (err) => {
+        if (err.message.includes('socketClosed')) {
+            addLog('LỖI', 'Server ngắt kết nối (socketClosed). Có thể do Anti-Bot hoặc Version.', 'red');
+        } else {
+            addLog('LỖI', err.message, 'red');
+        }
+    });
+
     bot.on('end', (reason) => {
-        addLog('HỆ THỐNG', `Mất kết nối: ${reason}. Thử lại sau 15s...`, 'red');
-        s = { ...s, login: 0, server: 0, home: 0, mining: 0, isTeleporting: false };
-        setTimeout(createBot, 15000);
+        addLog('HỆ THỐNG', `Bot dừng: ${reason}. Thử lại sau 20s...`, 'red');
+        s = { login: 0, server: 0, home: 0, mining: 0, blocks: s.blocks, start: s.start, isTeleporting: false };
+        setTimeout(createBot, 20000);
     });
 }
 
