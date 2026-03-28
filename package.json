@@ -1,7 +1,6 @@
 {
-  "name": "mineflayer-bot",
+  "name": "lucifer-bot-render",
   "version": "1.0.0",
-  "description": "Lucifer Bot for AquaMC",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
